@@ -1,20 +1,28 @@
 [package]
-name = "propane"
+name = "iterator_item"
 version = "0.1.0"
-authors = ["Without Boats <saoirse@without.boats>"]
-edition = "2018"
+authors = ["Esteban Küber <esteban@kuber.com.ar>"]
+edition = "2021"
 license = "MIT OR Apache-2.0"
 
 description = "a generator syntax experiment"
-repository = "https://github.com/withoutboats/propane"
-documentation = "https://docs.rs/propane"
-keywords = ["iterators", "generators"]
+repository = "https://github.com/estebank/iterator_item"
+documentation = "https://docs.rs/iterator_item"
+keywords = ["iterators", "generators", "stream"]
+
 
 [dependencies]
-futures-core = "0.3.5"
+iterator_item_macros = { path = "./iterator_item_macros", version = "0.1.0" }
+futures = "0.3.17"
 
-[dependencies.propane-macros]
-path = "./propane-macros"
-version = "0.1.0"
+[dev-dependencies]
+tokio = { version = "1.13", features = ["macros", "rt"] }
+
+[features]
+# For now this isn't yet useful, as `Stream` is in flux (its API changed and being renamed to
+# `AsyncIterator`), but can be used in the future (or with a little bit of duplicated output in the
+# `async fn*` desugaring):
+# https://rust-lang.github.io/wg-async-foundations/vision/roadmap/async_iter/traits.html
+std_async_iter = []
 
 [workspace]

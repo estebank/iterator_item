@@ -1,14 +1,17 @@
-use proc_macro2::{Span};
-use syn::*;
+use proc_macro2::Span;
+use syn::fold::Fold;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::fold::Fold;
+use syn::*;
 
-pub fn unelide_lifetimes(generics: &mut Punctuated<GenericParam, Comma>, args: Punctuated<FnArg, Comma>)
-    -> Punctuated<FnArg, Comma>
-{
+pub fn unelide_lifetimes(
+    generics: &mut Punctuated<GenericParam, Comma>,
+    args: Punctuated<FnArg, Comma>,
+) -> Punctuated<FnArg, Comma> {
     let mut folder = UnelideLifetimes::new(generics);
-    args.into_iter().map(|arg| folder.fold_fn_arg(arg)).collect()
+    args.into_iter()
+        .map(|arg| folder.fold_fn_arg(arg))
+        .collect()
 }
 
 struct UnelideLifetimes<'a> {
@@ -26,9 +29,8 @@ impl<'a> UnelideLifetimes<'a> {
             generics,
             lifetime_index,
             lifetime_name,
-            count: 0
+            count: 0,
         }
-
     }
 
     // Constitute a new lifetime
@@ -37,7 +39,10 @@ impl<'a> UnelideLifetimes<'a> {
         let lifetime = Lifetime::new(&lifetime_name, Span::call_site());
 
         let idx = self.lifetime_index + self.count as usize;
-        self.generics.insert(idx, GenericParam::Lifetime(LifetimeDef::new(lifetime.clone())));
+        self.generics.insert(
+            idx,
+            GenericParam::Lifetime(LifetimeDef::new(lifetime.clone())),
+        );
         self.count += 1;
 
         lifetime
@@ -47,7 +52,7 @@ impl<'a> UnelideLifetimes<'a> {
     fn expand_lifetime(&mut self, lifetime: Option<Lifetime>) -> Lifetime {
         match lifetime {
             Some(l) => self.fold_lifetime(l),
-            None    => self.new_lifetime(),
+            None => self.new_lifetime(),
         }
     }
 }
@@ -55,16 +60,29 @@ impl<'a> UnelideLifetimes<'a> {
 impl<'a> Fold for UnelideLifetimes<'a> {
     // If the lifetime is `'_`, replace it with a new unelided lifetime
     fn fold_lifetime(&mut self, lifetime: Lifetime) -> Lifetime {
-        if lifetime.to_string() == "'_" { self.new_lifetime() }
-        else { lifetime }
+        if lifetime.to_string() == "'_" {
+            self.new_lifetime()
+        } else {
+            lifetime
+        }
     }
 
     // If the reference's lifetime is elided, replace it with a new unelided lifetime
     fn fold_type_reference(&mut self, ty_ref: TypeReference) -> TypeReference {
-        let TypeReference { and_token, lifetime, mutability, elem } = ty_ref;
+        let TypeReference {
+            and_token,
+            lifetime,
+            mutability,
+            elem,
+        } = ty_ref;
         let lifetime = Some(self.expand_lifetime(lifetime));
         let elem = Box::new(self.fold_type(*elem));
-        TypeReference { and_token, lifetime, mutability, elem }
+        TypeReference {
+            and_token,
+            lifetime,
+            mutability,
+            elem,
+        }
     }
 
     fn fold_receiver(&mut self, receiver: Receiver) -> Receiver {
@@ -73,13 +91,23 @@ impl<'a> Fold for UnelideLifetimes<'a> {
             (and, Some(lifetime))
         });
 
-        Receiver { reference, ..receiver }
+        Receiver {
+            reference,
+            ..receiver
+        }
     }
 }
 
 fn lifetime_index(generics: &Punctuated<GenericParam, Comma>) -> usize {
-    generics.iter()
-        .take_while(|param| if let GenericParam::Lifetime(_) = param { true } else { false })
+    generics
+        .iter()
+        .take_while(|param| {
+            if let GenericParam::Lifetime(_) = param {
+                true
+            } else {
+                false
+            }
+        })
         .count()
 }
 
@@ -87,11 +115,20 @@ fn lifetime_index(generics: &Punctuated<GenericParam, Comma>) -> usize {
 // overlap with any existing lifetime names.
 fn lifetime_name(generics: &Punctuated<GenericParam, Comma>) -> String {
     let mut lifetime_name = String::from("'_async");
-    let existing_lifetimes: Vec<String> = generics.iter().filter_map(|param| {
-        if let GenericParam::Lifetime(LifetimeDef { lifetime, .. }) = param { Some(lifetime.to_string()) }
-        else { None }
-    }).collect();
-    while existing_lifetimes.iter().any(|name| name.starts_with(&lifetime_name)) {
+    let existing_lifetimes: Vec<String> = generics
+        .iter()
+        .filter_map(|param| {
+            if let GenericParam::Lifetime(LifetimeDef { lifetime, .. }) = param {
+                Some(lifetime.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    while existing_lifetimes
+        .iter()
+        .any(|name| name.starts_with(&lifetime_name))
+    {
         lifetime_name.push('_');
     }
     lifetime_name

@@ -1,14 +1,15 @@
-//! This library provides a generator macro, to define generators.
+//! This library provides a macro to define iterator items, A.K.A. generators.
 //!
-//! It is intended to explore one particular point in the design space of generators. More
-//! documentation can be found in the description of the attribute.
-#![feature(generator_trait)]
+//! It is intended to explore the design space of the syntax for generators. More
+//! documentation can be found in the description of the macro.
+#![feature(generator_trait, try_trait_v2)]
+#![cfg_attr(feature = "std_async_iter", async_stream)]
 #![no_std]
 
-/// This macro can be applied to functions to make them into generators.
+/// This macro can be used to make functions that function as generators.
 ///
-/// Functions annotated with this attribute use the `yield` keyword, instead of the `return`
-/// keyword. They yield an item and then continue. When you call a generator function, you get an
+/// Functions annotated with this macro can use the `yield` keyword to give the next element in a
+/// sequence. They yield an item and then continue. When you call a generator function, you get an
 /// iterator of the type it yields, rather than just one value of that type.
 ///
 /// You can still use the `return` keyword to terminate the generator early, but the `return`
@@ -29,23 +30,25 @@
 /// In order to use this attribute, you must turn on all of these features:
 /// - `generators`
 /// - `generator_trait`
-/// - `try_trait`
+/// - `async_stream`, if enabling feature `std_async_iter` (WIP)
 ///
 /// ## Example
 ///
 /// ```rust
-/// #![feature(generators, generator_trait, try_trait)]
+/// #![feature(generators, generator_trait)]
+/// # use iterator_item::iterator_item;
 ///
-/// #[propane::generator]
-/// fn fizz_buzz() -> String {
-///    for x in 1..101 {
-///       match (x % 3 == 0, x % 5 == 0) {
-///           (true, true)  => yield String::from("FizzBuzz"),
-///           (true, false) => yield String::from("Fizz"),
-///           (false, true) => yield String::from("Buzz"),
-///           (..)          => yield x.to_string(),
-///       }
-///    }
+/// iterator_item! {
+///     fn* fizz_buzz() yields String {
+///        for x in 1..101 {
+///           match (x % 3 == 0, x % 5 == 0) {
+///               (true, true)  => yield String::from("FizzBuzz"),
+///               (true, false) => yield String::from("Fizz"),
+///               (false, true) => yield String::from("Buzz"),
+///               (..)          => yield x.to_string(),
+///           }
+///        }
+///     }
 /// }
 ///
 /// fn main() {
@@ -67,11 +70,10 @@
 ///     assert!(fizz_buzz.next().is_none());
 /// }
 /// ```
-pub use propane_macros::generator;
-pub use propane_macros::gen;
-pub use propane_macros::gen_move;
-pub use propane_macros::async_gen;
-pub use propane_macros::async_gen_move;
+///
+/// The intention of this crate is for people to fork it and submit alternative syntax for this
+/// feature that they believe would make for a better user experience.
+pub use iterator_item_macros::iterator_item;
 
 #[doc(hidden)]
 pub mod __internal {
@@ -79,43 +81,89 @@ pub mod __internal {
     use core::ops::{Generator, GeneratorState};
     use core::pin::Pin;
     use core::task::{Context, Poll};
+    #[cfg(not(feature = "std_async_iter"))]
+    pub use futures::stream::{Stream, StreamExt};
 
-    pub use futures_core::Stream;
+    /// New-type wrapper around the unstable `Generator` opaque type.
+    ///
+    /// The final version of this type in `std`, if needed, would *also* not be be either
+    /// perma-unstable to use directly, or another opaque type. This is used to both give us a way
+    /// to `impl Iterator` and somewhere to hold the computed `size_hint` value.
+    pub struct IteratorItem<G: Generator<Return = ()> + Unpin> {
+        pub gen: G,
+        pub size_hint: (usize, Option<usize>),
+    }
 
-    pub struct GenIter<G>(pub G);
-
-    impl<G: Generator<Return = ()> + Unpin> Iterator for GenIter<G> {
+    impl<G: Generator<Return = ()> + Unpin> Iterator for IteratorItem<G> {
         type Item = G::Yield;
 
         fn next(&mut self) -> Option<Self::Item> {
-            match Pin::new(&mut self.0).resume(()) {
-                GeneratorState::Yielded(item)   => Some(item),
-                GeneratorState::Complete(())    => None,
+            match Pin::new(&mut self.gen).resume(()) {
+                GeneratorState::Yielded(item) => Some(item),
+                GeneratorState::Complete(()) => None,
             }
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.size_hint
         }
     }
 
-    pub struct GenStream<G>(G);
-
-    impl<G> GenStream<G> {
-        pub unsafe fn new(gen: G) -> GenStream<G> { GenStream(gen) }
+    /// New-type wrapper around the unstable `Generator` opaque type.
+    ///
+    /// The final version of this type in `std`, if needed, would *also* not be be either
+    /// perma-unstable to use directly, or another opaque type. This is used to both give us a way
+    /// to `impl Stream` and somewhere to hold the computed `size_hint` value.
+    ///
+    /// I refer to it as `AsyncIteratorItem` instead of `StreamItem` in anticipation of the trait
+    /// potentially being renamed.
+    pub struct AsyncIteratorItem<G: Generator<*mut (), Return = ()>> {
+        pub gen: G,
+        pub size_hint: (usize, Option<usize>),
     }
 
-    impl<G: Generator<*mut (), Yield = Poll<T>, Return = ()>, T> Stream for GenStream<G> {
+    /// This implementation is functional, but [`Stream` is currently in flux][1]:
+    ///
+    /// [1]: https://rust-lang.github.io/wg-async-foundations/vision/roadmap/async_iter/traits.html
+    #[cfg(feature = "std_async_iter")]
+    impl<G: Generator<*mut (), Yield = Poll<T>, Return = ()>, T> core::stream::Stream
+        for AsyncIteratorItem<G>
+    {
         type Item = T;
 
         fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             let ctx: *mut () = ctx as *mut Context<'_> as *mut ();
 
-            unsafe {
-                let gen: Pin<&mut G> = Pin::map_unchecked_mut(self, |this| &mut this.0);
-
-                match gen.resume(ctx) {
-                    GeneratorState::Complete(())                => Poll::Ready(None),
-                    GeneratorState::Yielded(Poll::Ready(item))  => Poll::Ready(Some(item)),
-                    GeneratorState::Yielded(Poll::Pending)      => Poll::Pending,
-                }
+            let gen: Pin<&mut G> = unsafe { Pin::map_unchecked_mut(self, |this| &mut this.gen) };
+            match gen.resume(ctx) {
+                GeneratorState::Yielded(Poll::Ready(item)) => Poll::Ready(Some(item)),
+                GeneratorState::Yielded(Poll::Pending) => Poll::Pending,
+                GeneratorState::Complete(()) => Poll::Ready(None),
             }
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.size_hint
+        }
+    }
+
+    #[cfg(not(feature = "std_async_iter"))]
+    impl<G: Generator<*mut (), Yield = Poll<T>, Return = ()>, T> Stream for AsyncIteratorItem<G> {
+        type Item = T;
+
+        fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            let ctx: *mut () = ctx as *mut Context<'_> as *mut ();
+
+            let gen: Pin<&mut G> = unsafe { Pin::map_unchecked_mut(self, |this| &mut this.gen) };
+            match gen.resume(ctx) {
+                GeneratorState::Yielded(Poll::Ready(item)) => Poll::Ready(Some(item)),
+                GeneratorState::Yielded(Poll::Pending) => Poll::Pending,
+                GeneratorState::Complete(()) => Poll::Ready(None),
+            }
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.size_hint
         }
     }
 
@@ -123,30 +171,30 @@ pub mod __internal {
     #[macro_export]
     macro_rules! gen_try {
         ($e:expr) => {{
-            use core::ops::Try;
-            match Try::into_result($e) {
-                Ok(ok)      => ok,
-                Err(err)    => {
-                    yield <_ as Try>::from_error(err);
+            use core::ops::{ControlFlow, FromResidual, Try};
+            match Try::branch($e) {
+                ControlFlow::Continue(ok) => ok,
+                ControlFlow::Break(err) => {
+                    yield FromResidual::from_residual(err);
                     return;
                 }
             }
-        }}
+        }};
     }
 
     #[doc(hidden)]
     #[macro_export]
     macro_rules! async_gen_try {
         ($e:expr) => {{
-            use core::ops::Try;
-            match Try::into_result($e) {
-                Ok(ok)      => ok,
-                Err(err)    => {
-                    yield core::task::Poll::Ready(<_ as Try>::from_error(err));
+            use core::ops::{ControlFlow, FromResidual, Try};
+            match Try::branch($e) {
+                ControlFlow::Continue(ok) => ok,
+                ControlFlow::Break(err) => {
+                    yield core::task::Poll::Ready(FromResidual::from_residual(err));
                     return;
                 }
             }
-        }}
+        }};
     }
 
     #[doc(hidden)]
@@ -154,7 +202,7 @@ pub mod __internal {
     macro_rules! async_gen_yield {
         ($e:expr) => {{
             yield core::task::Poll::Ready($e)
-        }}
+        }};
     }
 
     #[doc(hidden)]
@@ -163,17 +211,17 @@ pub mod __internal {
         ($e:expr, $ctx:expr) => {{
             unsafe {
                 use core::pin::Pin;
-                use core::task::{Poll, Context};
+                use core::task::{Context, Poll};
                 let ctx = &mut *($ctx as *mut Context<'_>);
                 let mut e = $e;
                 let mut future = Pin::new_unchecked(&mut e);
                 loop {
                     match core::future::Future::poll(Pin::as_mut(&mut future), ctx) {
-                        Poll::Ready(x)   => break x,
-                        Poll::Pending    => $ctx = yield Poll::Pending,
+                        Poll::Ready(x) => break x,
+                        Poll::Pending => $ctx = yield Poll::Pending,
                     }
                 }
             }
-        }}
+        }};
     }
 }

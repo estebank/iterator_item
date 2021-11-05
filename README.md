@@ -1,15 +1,15 @@
-# propane - Rust generators
+# Rust Iterator Items: a syntax exploration
 
-Propane is a thin wrapper around the unstable generator feature, allowing users to create free
-functions as generators. It implements a particular idea for how generators should be designed; a
-big part of why generators are still unstable today is that these design questions are still
-undecided.
+This crate is a thin wrapper around the unstable generator feature, allowing users to create new 
+items that act as generators. It follows the general semantics of the Propane crate, but my
+interest for this crate is for interested people to fork it and come up with their own syntax for
+these.
 
-The syntax looks like this:
+The initial syntax looks like this and needs to be surrounded by an invocation of the
+`iterator_item` macro:
 
 ```rust
-#[propane::generator]
-fn foo() -> i32 {
+fn* foo() yields i32 {
     for n in 0i32..10 {
         yield n;
     }
@@ -17,9 +17,12 @@ fn foo() -> i32 {
 ```
 
 Because it is a macro, it does not work as well as a native language feature would, and has worse
-error messages.
+error messages, but some effort has been made to make them usable.
 
-## Design decisions
+## Design decisions of propane
+
+Because the semantics are heavily leaning on Propane, the following considerations also apply to
+this crate.
 
 Propane is designed to allow users to write generators for the purpose of implementing iterators.
 For that reason, its generators are restricted in some important ways. These are the intentional
