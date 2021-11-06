@@ -5,11 +5,11 @@ items that act as generators. It follows the general semantics of the Propane cr
 interest for this crate is for interested people to fork it and come up with their own syntax for
 these.
 
-The initial syntax looks like this and needs to be surrounded by an invocation of the
-`iterator_item` macro:
+This syntax fork implements the generator syntax from [RFC 2996](https://github.com/rust-lang/rfcs/blob/master/text/2996-async-stream.md#generator-syntax).
+It looks like this and needs to be surrounded by an invocation of the `iterator_item` macro:
 
 ```rust
-fn* foo() yields i32 {
+gen fn foo() -> i32 {
     for n in 0i32..10 {
         yield n;
     }
