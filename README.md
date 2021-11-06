@@ -1,9 +1,11 @@
 # Rust Iterator Items: a syntax exploration
 
 This crate is a thin wrapper around the unstable generator feature, allowing users to create new 
-items that act as generators. It follows the general semantics of the Propane crate, but my
+items that act as generators. It follows the general semantics of the [Propane crate][propane], but my
 interest for this crate is for interested people to fork it and come up with their own syntax for
 these.
+
+[propane]: https://github.com/withoutboats/propane
 
 The initial syntax looks like this and needs to be surrounded by an invocation of the
 `iterator_item` macro:
