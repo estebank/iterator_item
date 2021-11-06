@@ -29,7 +29,7 @@ impl Parse for IteratorItemParse {
     /// Hi! If you are looking to hack on this crate to come up with your own syntax, **look here**!
     fn parse(input: ParseStream) -> Result<Self> {
         // This will parse the following:
-        // `#[attr(..)] #[attr2] pub async fn* foo(<args>) yields Ty { ... }`
+        // `#[attr(..)] #[attr2] pub async fn* foo(<args>) -> Ty { ... }`
         let attributes: Vec<Attribute> = input.call(Attribute::parse_outer)?;
         let visibility: Visibility = input.parse()?;
         let r#async: Option<Token![async]> = input.parse()?;
@@ -40,17 +40,10 @@ impl Parse for IteratorItemParse {
         let fn_args;
         parenthesized!(fn_args in input);
         let args = parse_fn_args(&fn_args)?;
-        let yields: Option<Ident> = input.parse()?;
-        let yields: Option<Type> = if let Some(yields) = yields {
-            if yields != "yields" {
-                yields
-                    .span()
-                    .unwrap()
-                    .error("expected contextual keyword `yields` or the start of an iterator body")
-                    .emit();
-                // FIXME: potentially deal better with this and try to recover the parse in a way
-                // that doesn't spam an user that forgot to write yields or tried to write `->`.
-            }
+        // Parse optional right arrow token `->`, marking the beginning of the return type
+        let lookahead = input.lookahead1();
+        let yields: Option<Type> = if lookahead.peek(Token![->]) {
+            input.parse::<Token![->]>()?;
             Some(input.parse()?)
         } else {
             None

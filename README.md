@@ -7,11 +7,11 @@ these.
 
 [propane]: https://github.com/withoutboats/propane
 
-The initial syntax looks like this and needs to be surrounded by an invocation of the
+This syntax fork has the `fn*` header from javascript and the initial syntax example, but with the usual rust return type syntax which is also like RFC 2996. It looks like this and needs to be surrounded by an invocation of the
 `iterator_item` macro:
 
 ```rust
-fn* foo() yields i32 {
+fn* foo() -> i32 {
     for n in 0i32..10 {
         yield n;
     }

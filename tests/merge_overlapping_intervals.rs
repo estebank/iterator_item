@@ -59,7 +59,7 @@ impl Interval {
 
 iterator_item! {
     /// Precondition: `input` must be sorted
-    fn* merge_overlapping_intervals(mut input: impl Iterator<Item = Interval>) yields Interval {
+    fn* merge_overlapping_intervals(mut input: impl Iterator<Item = Interval>) -> Interval {
         let Some(mut prev) = input.next() else {
             return;
         };
@@ -124,7 +124,7 @@ fn handmade_merge_overlapping_intervals(
 
 iterator_item! {
     /// Precondition: each `Iterator` in `inputs` must be sorted
-    fn* sorted_merge_k_intervals(mut inputs: Vec<impl Iterator<Item = Interval>>) yields Interval {
+    fn* sorted_merge_k_intervals(mut inputs: Vec<impl Iterator<Item = Interval>>) -> Interval {
         if inputs.len() == 0 {
             return;
         }
@@ -165,7 +165,7 @@ iterator_item! {
 //
 // This could be easily detected and implemented as an auto-applicable `rustc` suggestion.
 iterator_item! {
-    fn* merge_k_overlapping_intervals(inputs: Vec<impl Iterator<Item = Interval>>) yields Interval {
+    fn* merge_k_overlapping_intervals(inputs: Vec<impl Iterator<Item = Interval>>) -> Interval {
         for i in merge_overlapping_intervals(sorted_merge_k_intervals(inputs)) {
             yield i;
         }
@@ -284,7 +284,7 @@ fn test_merge_k_overlapping_intervals() {
 
 iterator_item! {
     /// Precondition: `input` must be sorted
-    async fn* async_merge_overlapping_intervals(input: impl Stream<Item = Interval>) yields Interval {
+    async fn* async_merge_overlapping_intervals(input: impl Stream<Item = Interval>) -> Interval {
         let mut input = Box::pin(input);
         let mut prev = if let Some(prev) = input.next().await {
             // FIXME: why din't `let else` work here?
@@ -307,7 +307,7 @@ iterator_item! {
 
 iterator_item! {
     /// Precondition: each `Iterator` in `inputs` must be sorted
-    async fn* async_sorted_merge_k_intervals(inputs: Vec<impl Stream<Item = Interval>>) yields Interval {
+    async fn* async_sorted_merge_k_intervals(inputs: Vec<impl Stream<Item = Interval>>) -> Interval {
         if inputs.len() == 0 {
             return;
         }
@@ -348,7 +348,7 @@ iterator_item! {
 
 // We don't need as it exists but I think it's neat that we can write it this easily.
 iterator_item! {
-    async fn* into_stream(input: impl Iterator<Item = Interval>) yields Interval {
+    async fn* into_stream(input: impl Iterator<Item = Interval>) -> Interval {
         for i in input {
             yield i;
         }
