@@ -166,9 +166,7 @@ iterator_item! {
 // This could be easily detected and implemented as an auto-applicable `rustc` suggestion.
 iterator_item! {
     fn* merge_k_overlapping_intervals(inputs: Vec<impl Iterator<Item = Interval>>) -> Interval {
-        for i in merge_overlapping_intervals(sorted_merge_k_intervals(inputs)) {
-            yield i;
-        }
+        yield #[from] merge_overlapping_intervals(sorted_merge_k_intervals(inputs));
     }
 }
 

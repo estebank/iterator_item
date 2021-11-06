@@ -2,6 +2,18 @@
 use iterator_item::iterator_item;
 
 iterator_item! {
+    fn* yield_from_iterator<T>(it: impl Iterator<Item = T>) -> T {
+        yield #[from] it;
+    }
+}
+
+#[test]
+fn test_yield_from_iterator() {
+    let bar = yield_from_iterator(vec![1, 2, 3].into_iter());
+    assert_eq!(&[1, 2, 3][..], &bar.collect::<Vec<_>>()[..]);
+}
+
+iterator_item! {
     /// Basic smoke test
     #[size_hint((10, Some(10)))]
     fn* foo() -> i32 {
@@ -29,9 +41,7 @@ iterator_item! {
     })]
     fn* bar(iter: impl Iterator<Item = i32>) -> i32 {
         yield 42;
-        for n in iter {
-            yield n;
-        }
+        yield #[from] iter;
         yield 42;
     }
 }
