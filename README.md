@@ -18,6 +18,27 @@ fn* foo() -> i32 {
 }
 ```
 
+Additionally, it tries to implement something like `yield from some_iterator;` which would yield all
+items in the iterator. Since it's a bit involved to parse invalid syntax, this syntax test uses
+`yield #[from] some_iterator;` for now, to model that in spirit. (And for the same reason, only in
+sync functions: async generators don't support it at this point).
+
+It looks like this:
+
+```rust
+iterator_item! {
+    fn* yield_from_iterator<T>(it: impl Iterator<Item = T>) -> T {
+        yield #[from] it;
+    }
+}
+
+#[test]
+fn test_yield_from_iterator() {
+    let bar = yield_from_iterator(vec![1, 2, 3].into_iter());
+    assert_eq!(&[1, 2, 3][..], &bar.collect::<Vec<_>>()[..]);
+}
+```
+
 Because it is a macro, it does not work as well as a native language feature would, and has worse
 error messages, but some effort has been made to make them usable.
 
