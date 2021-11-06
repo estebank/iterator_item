@@ -5,6 +5,7 @@ use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+use syn::visit::Visit;
 use syn::visit_mut::VisitMut;
 use syn::*;
 mod elision;
@@ -29,7 +30,7 @@ impl Parse for IteratorItemParse {
     /// Hi! If you are looking to hack on this crate to come up with your own syntax, **look here**!
     fn parse(input: ParseStream) -> Result<Self> {
         // This will parse the following:
-        // `#[attr(..)] #[attr2] pub async fn* foo(<args>) yields Ty { ... }`
+        // `#[attr(..)] #[attr2] pub async fn* foo(<args>) -> Ty { ... }`
         let attributes: Vec<Attribute> = input.call(Attribute::parse_outer)?;
         let visibility: Visibility = input.parse()?;
         let r#async: Option<Token![async]> = input.parse()?;
@@ -40,17 +41,10 @@ impl Parse for IteratorItemParse {
         let fn_args;
         parenthesized!(fn_args in input);
         let args = parse_fn_args(&fn_args)?;
-        let yields: Option<Ident> = input.parse()?;
-        let yields: Option<Type> = if let Some(yields) = yields {
-            if yields != "yields" {
-                yields
-                    .span()
-                    .unwrap()
-                    .error("expected contextual keyword `yields` or the start of an iterator body")
-                    .emit();
-                // FIXME: potentially deal better with this and try to recover the parse in a way
-                // that doesn't spam an user that forgot to write yields or tried to write `->`.
-            }
+        // Parse optional right arrow token `->`, marking the beginning of the return type
+        let lookahead = input.lookahead1();
+        let yields: Option<Type> = if lookahead.peek(Token![->]) {
+            input.parse::<Token![->]>()?;
             Some(input.parse()?)
         } else {
             None
@@ -212,6 +206,22 @@ impl VisitMut for Visitor {
                 }
                 *expr = None;
             }
+
+            // Turn `yield #[from] #iter` expression into a loop yielding every item from the iterator
+            syn::Expr::Yield(syn::ExprYield {
+                expr: Some(expr), ..
+            }) if !self.is_async && is_expr_yield_from(&expr) => {
+                // Remove attribute from the expr
+                remove_yield_from(expr);
+
+                // Turn the cleaned expr into a loop yielding every item out of it
+                *i = parse_quote!(
+                    for i in #expr {
+                        yield i;
+                    }
+                );
+            }
+
             syn::Expr::Yield(syn::ExprYield {
                 expr: Some(expr), ..
             }) if self.is_async => {
@@ -237,6 +247,92 @@ impl VisitMut for Visitor {
             _ => {}
         }
     }
+}
+
+// Parsing invalid syntaxes such as `yield from my_iterator;` is a bit more involved,
+// than something like `yield #[from] my_iterator;` so let's do that instead.
+fn is_expr_yield_from(expr: &Expr) -> bool {
+    struct FromAttributeDetector(bool);
+    impl Visit<'_> for FromAttributeDetector {
+        fn visit_attribute(&mut self, node: &Attribute) {
+            if node
+                .path
+                .segments
+                .iter()
+                .any(|segment| segment.ident == "from")
+            {
+                self.0 = true;
+            }
+            syn::visit::visit_attribute(self, node);
+        }
+    }
+
+    let mut visitor = FromAttributeDetector(false);
+    visitor.visit_expr(expr);
+    visitor.0
+}
+
+fn remove_yield_from(expr: &mut Expr) {
+    fn remove_from_attribute(attrs: &mut Vec<Attribute>) {
+        attrs.retain(|attr| {
+            !attr
+                .path
+                .segments
+                .iter()
+                .any(|segment| segment.ident == "from")
+        })
+    }
+    struct RemoveYieldFromAttribute;
+    impl VisitMut for RemoveYieldFromAttribute {
+        fn visit_expr_mut(&mut self, node: &mut Expr) {
+            match node {
+                Expr::Array(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Assign(e) => remove_from_attribute(&mut e.attrs),
+                Expr::AssignOp(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Async(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Await(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Binary(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Block(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Box(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Break(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Call(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Cast(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Closure(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Continue(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Field(e) => remove_from_attribute(&mut e.attrs),
+                Expr::ForLoop(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Group(e) => remove_from_attribute(&mut e.attrs),
+                Expr::If(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Index(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Let(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Lit(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Loop(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Macro(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Match(e) => remove_from_attribute(&mut e.attrs),
+                Expr::MethodCall(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Paren(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Path(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Range(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Reference(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Repeat(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Return(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Struct(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Try(e) => remove_from_attribute(&mut e.attrs),
+                Expr::TryBlock(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Tuple(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Type(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Unary(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Unsafe(e) => remove_from_attribute(&mut e.attrs),
+                Expr::While(e) => remove_from_attribute(&mut e.attrs),
+                Expr::Yield(e) => remove_from_attribute(&mut e.attrs),
+                _ => {}
+            }
+
+            syn::visit_mut::visit_expr_mut(self, node);
+        }
+    }
+
+    RemoveYieldFromAttribute.visit_expr_mut(expr);
 }
 
 /// Copied from `syn` because it exists but it is private 🤷

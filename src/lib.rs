@@ -39,7 +39,7 @@
 /// # use iterator_item::iterator_item;
 ///
 /// iterator_item! {
-///     fn* fizz_buzz() yields String {
+///     fn* fizz_buzz() -> String {
 ///        for x in 1..101 {
 ///           match (x % 3 == 0, x % 5 == 0) {
 ///               (true, true)  => yield String::from("FizzBuzz"),

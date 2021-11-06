@@ -7,14 +7,35 @@ these.
 
 [propane]: https://github.com/withoutboats/propane
 
-The initial syntax looks like this and needs to be surrounded by an invocation of the
+This syntax fork has the `fn*` header from javascript and the initial syntax example, but with the usual rust return type syntax which is also like RFC 2996. It looks like this and needs to be surrounded by an invocation of the
 `iterator_item` macro:
 
 ```rust
-fn* foo() yields i32 {
+fn* foo() -> i32 {
     for n in 0i32..10 {
         yield n;
     }
+}
+```
+
+Additionally, it tries to implement something like `yield from some_iterator;` which would yield all
+items in the iterator. Since it's a bit involved to parse invalid syntax, this syntax test uses
+`yield #[from] some_iterator;` for now, to model that in spirit. (And for the same reason, only in
+sync functions: async generators don't support it at this point).
+
+It looks like this:
+
+```rust
+iterator_item! {
+    fn* yield_from_iterator<T>(it: impl Iterator<Item = T>) -> T {
+        yield #[from] it;
+    }
+}
+
+#[test]
+fn test_yield_from_iterator() {
+    let bar = yield_from_iterator(vec![1, 2, 3].into_iter());
+    assert_eq!(&[1, 2, 3][..], &bar.collect::<Vec<_>>()[..]);
 }
 ```
 

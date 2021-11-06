@@ -2,9 +2,21 @@
 use iterator_item::iterator_item;
 
 iterator_item! {
+    fn* yield_from_iterator<T>(it: impl Iterator<Item = T>) -> T {
+        yield #[from] it;
+    }
+}
+
+#[test]
+fn test_yield_from_iterator() {
+    let bar = yield_from_iterator(vec![1, 2, 3].into_iter());
+    assert_eq!(&[1, 2, 3][..], &bar.collect::<Vec<_>>()[..]);
+}
+
+iterator_item! {
     /// Basic smoke test
     #[size_hint((10, Some(10)))]
-    fn* foo() yields i32 {
+    fn* foo() -> i32 {
         for n in 0..10 {
             yield n;
         }
@@ -27,11 +39,9 @@ iterator_item! {
         let (x, y) = iter.size_hint();
         (x + 2, y.map(|y| y + 2))
     })]
-    fn* bar(iter: impl Iterator<Item = i32>) yields i32 {
+    fn* bar(iter: impl Iterator<Item = i32>) -> i32 {
         yield 42;
-        for n in iter {
-            yield n;
-        }
+        yield #[from] iter;
         yield 42;
     }
 }
@@ -44,7 +54,7 @@ fn test_bar() {
 }
 
 iterator_item! {
-    fn* result() yields Result<i32, ()> {
+    fn* result() -> Result<i32, ()> {
         fn bar() -> Result<(), ()> {
             Err(())
         }
@@ -75,7 +85,7 @@ struct Foo(Option<i32>);
 impl Foo {
     iterator_item! {
         /// You can also have "associated iterator items"
-        fn* method(&mut self) yields i32 {
+        fn* method(&mut self) -> i32 {
             while let Some(n) = self.0.take() {
                 yield n;
             }
