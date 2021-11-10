@@ -1,4 +1,4 @@
-#![feature(generators, generator_trait, let_else)]
+#![feature(generators, generator_trait, try_trait_v2)]
 
 //! The following are the solution different phases of the "merge overlapping intervals"
 //! interview question, using iterator items.
@@ -60,9 +60,7 @@ impl Interval {
 iterator_item! {
     /// Precondition: `input` must be sorted
     fn* merge_overlapping_intervals(mut input: impl Iterator<Item = Interval>) yields Interval {
-        let Some(mut prev) = input.next() else {
-            return;
-        };
+        let mut prev = input.next()?;
         for i in input {
             if prev.overlaps(&i) {
                 prev = prev.merge(&i);
@@ -272,12 +270,7 @@ iterator_item! {
     /// Precondition: `input` must be sorted
     async fn* async_merge_overlapping_intervals(input: impl Stream<Item = Interval>) yields Interval {
         let mut input = Box::pin(input);
-        let mut prev = if let Some(prev) = input.next().await {
-            // FIXME: why din't `let else` work here?
-            prev
-        } else {
-            return;
-        };
+        let mut prev = input.next().await?;
         // We had to change the `for i in input` with an `.await` appropriate `while let` loop.
         while let Some(i) = input.next().await {
             if prev.overlaps(&i) {

@@ -167,6 +167,20 @@ pub mod __internal {
         }
     }
 
+    // This is used when the yielded type is *not* an `Option` or `Result` and `let x = x?;` is
+    // used as a shorthand for `let Some(x) = x else { return; };`.
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! gen_try_bare {
+        ($e:expr) => {{
+            use core::ops::{ControlFlow, FromResidual, Try};
+            match Try::branch($e) {
+                ControlFlow::Continue(ok) => ok,
+                ControlFlow::Break(_) => return,
+            }
+        }};
+    }
+
     #[doc(hidden)]
     #[macro_export]
     macro_rules! gen_try {
@@ -178,6 +192,20 @@ pub mod __internal {
                     yield FromResidual::from_residual(err);
                     return;
                 }
+            }
+        }};
+    }
+
+    // This is used when the yielded type is *not* an `Option` or `Result` and `let x = x?;` is
+    // used as a shorthand for `let Some(x) = x else { return; };`.
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! async_gen_try_bare {
+        ($e:expr) => {{
+            use core::ops::{ControlFlow, FromResidual, Try};
+            match Try::branch($e) {
+                ControlFlow::Continue(ok) => ok,
+                ControlFlow::Break(err) => return,
             }
         }};
     }

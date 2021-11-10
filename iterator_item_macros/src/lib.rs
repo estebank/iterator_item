@@ -92,7 +92,21 @@ impl IteratorItemParse {
         let lifetimes: Vec<syn::Lifetime> =
             generics.lifetimes().map(|l| l.lifetime.clone()).collect();
 
-        let mut visitor = Visitor::new(is_async);
+        let is_try_yield = match yields {
+            // This would be much nicer in `rustc` desugaring because we'd have access to name resolution.
+            Type::Path(TypePath {
+                qself: None,
+                ref path,
+            }) => {
+                let is_try = path
+                    .segments
+                    .first()
+                    .map_or(false, |s| s.ident == "Result" || s.ident == "Option");
+                path.segments.len() == 1 && is_try
+            }
+            _ => false,
+        };
+        let mut visitor = Visitor::new(is_async, is_try_yield);
         visitor.visit_block_mut(&mut body);
         let mut size_hint = quote!((0, None));
         attributes.retain(|attr| {
@@ -176,11 +190,15 @@ pub fn iterator_item(input: TokenStream) -> TokenStream {
 /// and `yield`.
 struct Visitor {
     is_async: bool,
+    is_try_yield: bool,
 }
 
 impl Visitor {
-    fn new(is_async: bool) -> Self {
-        Visitor { is_async }
+    fn new(is_async: bool, is_try_yield: bool) -> Self {
+        Visitor {
+            is_async,
+            is_try_yield,
+        }
     }
 }
 
@@ -229,9 +247,11 @@ impl VisitMut for Visitor {
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 // Turn `#expr?` into one last `yield #expr`
-                *i = match self.is_async {
-                    true => parse_quote!(iterator_item::async_gen_try!(#expr)),
-                    false => parse_quote!(iterator_item::gen_try!(#expr)),
+                *i = match (self.is_async, self.is_try_yield) {
+                    (true, true) => parse_quote!(iterator_item::async_gen_try!(#expr)),
+                    (false, true) => parse_quote!(iterator_item::gen_try!(#expr)),
+                    (true, false) => parse_quote!(iterator_item::async_gen_try_bare!(#expr)),
+                    (false, false) => parse_quote!(iterator_item::gen_try_bare!(#expr)),
                 };
             }
             _ => {}

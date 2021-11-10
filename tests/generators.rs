@@ -70,6 +70,24 @@ fn test_result() {
     assert!(result.next().is_none())
 }
 
+iterator_item! {
+    fn* early_return() yields i32 {
+        let mut x = Some(3);
+        let y = x.take()?;
+        yield y;
+        let y = x.take()?;
+        yield y;
+    }
+}
+
+#[test]
+fn test_early_return() {
+    let mut result = early_return();
+
+    assert_eq!(result.next(), Some(3));
+    assert!(result.next().is_none())
+}
+
 struct Foo(Option<i32>);
 
 impl Foo {
