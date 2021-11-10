@@ -57,7 +57,7 @@ impl Interval {
 
 // Turning it into an O(1) space implementation becomes almost trivial:
 
-iterator_item! {
+iterator_item! { *
     /// Precondition: `input` must be sorted
     fn* merge_overlapping_intervals(mut input: impl Iterator<Item = Interval>) yields Interval {
         let mut prev = input.next()?;
@@ -106,7 +106,7 @@ fn handmade_merge_overlapping_intervals(
     MergeOverlappingIntervals { input, prev }
 }
 
-iterator_item! {
+iterator_item! { *
     /// Precondition: each `Iterator` in `inputs` must be sorted
     fn* sorted_merge_k_intervals(mut inputs: Vec<impl Iterator<Item = Interval>>) yields Interval {
         if inputs.len() == 0 {
@@ -148,7 +148,7 @@ iterator_item! {
 // }
 //
 // This could be easily detected and implemented as an auto-applicable `rustc` suggestion.
-iterator_item! {
+iterator_item! { *
     fn* merge_k_overlapping_intervals(inputs: Vec<impl Iterator<Item = Interval>>) yields Interval {
         for i in merge_overlapping_intervals(sorted_merge_k_intervals(inputs)) {
             yield i;
@@ -266,7 +266,7 @@ fn test_merge_k_overlapping_intervals() {
 // Implementing the `async` version of this requires barely changing the signature of the
 // iterators and some translation to be able to consume the `Stream`s.
 
-iterator_item! {
+iterator_item! { *
     /// Precondition: `input` must be sorted
     async fn* async_merge_overlapping_intervals(input: impl Stream<Item = Interval>) yields Interval {
         let mut input = Box::pin(input);
@@ -284,7 +284,7 @@ iterator_item! {
     }
 }
 
-iterator_item! {
+iterator_item! { *
     /// Precondition: each `Iterator` in `inputs` must be sorted
     async fn* async_sorted_merge_k_intervals(inputs: Vec<impl Stream<Item = Interval>>) yields Interval {
         if inputs.len() == 0 {
@@ -326,7 +326,7 @@ iterator_item! {
 }
 
 // We don't need as it exists but I think it's neat that we can write it this easily.
-iterator_item! {
+iterator_item! { *
     async fn* into_stream(input: impl Iterator<Item = Interval>) yields Interval {
         for i in input {
             yield i;

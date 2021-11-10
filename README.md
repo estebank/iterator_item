@@ -7,11 +7,23 @@ these.
 
 [propane]: https://github.com/withoutboats/propane
 
-The initial syntax looks like this and needs to be surrounded by an invocation of the
+The following syntaxes are supported and need to be surrounded by an invocation of the
 `iterator_item` macro:
+
+Disambiguator: `*`
 
 ```rust
 fn* foo() yields i32 {
+    for n in 0i32..10 {
+        yield n;
+    }
+}
+```
+
+Disambiguator: `!`
+
+```rust
+gen fn foo() -> i32 {
     for n in 0i32..10 {
         yield n;
     }

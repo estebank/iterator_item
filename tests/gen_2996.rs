@@ -1,10 +1,10 @@
 #![feature(generators, generator_trait, let_else, try_trait_v2)]
 use iterator_item::iterator_item;
 
-iterator_item! { *
+iterator_item! { !
     /// Basic smoke test
     #[size_hint((10, Some(10)))]
-    fn* foo() yields i32 {
+    gen fn foo() -> i32 {
         for n in 0..10 {
             yield n;
         }
@@ -21,13 +21,13 @@ fn test_foo() {
     assert!(foo.next().is_none());
 }
 
-iterator_item! { *
+iterator_item! { !
     /// Show off the way you can write a custom `size_hint` impl.
     #[size_hint({
         let (x, y) = iter.size_hint();
         (x + 2, y.map(|y| y + 2))
     })]
-    fn* bar(iter: impl Iterator<Item = i32>) yields i32 {
+    gen fn bar(iter: impl Iterator<Item = i32>) -> i32 {
         yield 42;
         for n in iter {
             yield n;
@@ -43,8 +43,8 @@ fn test_bar() {
     assert_eq!(&[42, 1, 2, 3, 42][..], &bar.collect::<Vec<_>>()[..]);
 }
 
-iterator_item! { *
-    fn* result() yields Result<i32, ()> {
+iterator_item! { !
+    gen fn result() -> Result<i32, ()> {
         fn bar() -> Result<(), ()> {
             Err(())
         }
@@ -70,8 +70,8 @@ fn test_result() {
     assert!(result.next().is_none())
 }
 
-iterator_item! { *
-    fn* early_return() yields i32 {
+iterator_item! { !
+    gen fn early_return() -> i32 {
         let mut x = Some(3);
         let y = x.take()?;
         yield y;
@@ -91,9 +91,9 @@ fn test_early_return() {
 struct Foo(Option<i32>);
 
 impl Foo {
-    iterator_item! { *
+    iterator_item! { !
         /// You can also have "associated iterator items"
-        fn* method(&mut self) yields i32 {
+        gen fn method(&mut self) -> i32 {
             while let Some(n) = self.0.take() {
                 yield n;
             }
