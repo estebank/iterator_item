@@ -82,26 +82,11 @@ struct MergeOverlappingIntervals<I: Iterator<Item = Interval>> {
     prev: Option<Interval>,
 }
 
-impl<I: Iterator<Item = Interval>> MergeOverlappingIntervals<I> {
-    fn new(input: I) -> Self {
-        MergeOverlappingIntervals { input, prev: None }
-    }
-}
-
 impl<I: Iterator<Item = Interval>> Iterator for MergeOverlappingIntervals<I> {
     type Item = Interval;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut prev = match self.prev {
-            Some(prev) => prev,
-            None => match self.input.next() {
-                None => return None,
-                Some(i) => {
-                    self.prev = Some(i);
-                    i
-                }
-            },
-        };
+        let mut prev = self.prev?;
         while let Some(i) = self.input.next() {
             if prev.overlaps(&i) {
                 prev = prev.merge(&i);
@@ -117,9 +102,10 @@ impl<I: Iterator<Item = Interval>> Iterator for MergeOverlappingIntervals<I> {
 }
 
 fn handmade_merge_overlapping_intervals(
-    input: impl Iterator<Item = Interval>,
+    mut input: impl Iterator<Item = Interval>,
 ) -> impl Iterator<Item = Interval> {
-    MergeOverlappingIntervals::new(input)
+    let prev = input.next();
+    MergeOverlappingIntervals { input, prev }
 }
 
 iterator_item! {
