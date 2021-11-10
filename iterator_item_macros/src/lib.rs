@@ -246,10 +246,13 @@ impl VisitMut for Visitor {
                 *i = parse_quote!(iterator_item::async_gen_await!(#expr, __stream_ctx));
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
-                // Turn `#expr?` into one last `yield #expr`
                 *i = match (self.is_async, self.is_try_yield) {
+                    // Turn `#expr?` into one last `yield #expr`
                     (true, true) => parse_quote!(iterator_item::async_gen_try!(#expr)),
                     (false, true) => parse_quote!(iterator_item::gen_try!(#expr)),
+                    // Turn `#expr?` into an early return. This would operate better in `rustc`
+                    // with trait selection because then we can check whether the yielded value is
+                    // try. This might not be what we do, instead guide people towards `let else`.
                     (true, false) => parse_quote!(iterator_item::async_gen_try_bare!(#expr)),
                     (false, false) => parse_quote!(iterator_item::gen_try_bare!(#expr)),
                 };
