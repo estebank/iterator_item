@@ -4,6 +4,7 @@ use iterator_item::iterator_item;
 iterator_item! { #
     /// Basic smoke test
     fn foo() -> impl Iterator<Item=i32> {
+        #[size_hint((10, Some(10)))]
         gen {
             for n in 0..10 {
                 yield n;
@@ -15,69 +16,48 @@ iterator_item! { #
 #[test]
 fn test_foo() {
     let mut foo = foo();
-    // assert_eq!(foo.size_hint(), (10, Some(10)));
+    assert_eq!(foo.size_hint(), (10, Some(10)));
     for n in 0..10 {
         assert_eq!(foo.next(), Some(n));
     }
     assert!(foo.next().is_none());
 }
 
-iterator_item! { !
+iterator_item! { #
     /// Show off the way you can write a custom `size_hint` impl.
-    #[size_hint({
-        let (x, y) = iter.size_hint();
-        (x + 2, y.map(|y| y + 2))
-    })]
-    gen fn bar(iter: impl Iterator<Item = i32>) -> i32 {
-        yield 42;
-        for n in iter {
-            yield n;
+    fn bar() -> impl Iterator<Item = i32> {
+        let inner = vec![1, 2, 3].into_iter();
+
+        #[size_hint({
+            let (x, y) = inner.size_hint();
+            (x + 2, y.map(|y| y + 2))
+        })]
+        gen {
+            yield 42;
+            for n in inner {
+                yield n;
+            }
+            yield 42;
         }
-        yield 42;
     }
 }
 
 #[test]
 fn test_bar() {
-    let bar = bar(vec![1, 2, 3].into_iter());
+    let bar = bar();
     assert_eq!(bar.size_hint(), (5, Some(5)));
     assert_eq!(&[42, 1, 2, 3, 42][..], &bar.collect::<Vec<_>>()[..]);
 }
 
-iterator_item! { !
-    gen fn result() -> Result<i32, ()> {
-        fn bar() -> Result<(), ()> {
-            Err(())
+iterator_item! { #
+    fn early_return() -> impl Iterator<Item=i32> {
+        gen {
+            let mut x = Some(3);
+            let y = x.take()?;
+            yield y;
+            let y = x.take()?;
+            yield y;
         }
-
-        for n in 0..5 {
-            yield Ok(n);
-        }
-
-        bar()?;
-
-        yield Ok(10); // will not be evaluated
-    }
-}
-
-#[test]
-fn test_result() {
-    let mut result = result();
-    for n in 0..5 {
-        assert_eq!(result.next(), Some(Ok(n)));
-    }
-
-    assert_eq!(result.next(), Some(Err(())));
-    assert!(result.next().is_none())
-}
-
-iterator_item! { !
-    gen fn early_return() -> i32 {
-        let mut x = Some(3);
-        let y = x.take()?;
-        yield y;
-        let y = x.take()?;
-        yield y;
     }
 }
 
@@ -92,11 +72,13 @@ fn test_early_return() {
 struct Foo(Option<i32>);
 
 impl Foo {
-    iterator_item! { !
+    iterator_item! { #
         /// You can also have "associated iterator items"
-        gen fn method(&mut self) -> i32 {
-            while let Some(n) = self.0.take() {
-                yield n;
+        fn method(&mut self) -> impl Iterator<Item=i32> + '_ {
+            gen {
+                while let Some(n) = self.0.take() {
+                    yield n;
+                }
             }
         }
     }

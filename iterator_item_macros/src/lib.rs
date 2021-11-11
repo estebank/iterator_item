@@ -99,12 +99,13 @@ fn parse_gen_2996(input: ParseStream) -> Result<IteratorItemParse> {
     // `#[attr(..)] #[attr2] pub async gen fn foo(<args>) -> Ty { ... }`
     let attributes: Vec<Attribute> = input.call(Attribute::parse_outer)?;
     let visibility: Visibility = input.parse()?;
-    let r#async: Option<Token![async]> = input.parse()?;
 
     // Parse expected `gen` keyword. That's not currently a token, so hack it up.
     let gen: Option<Ident> = input.parse()?;
+    let is_async;
     if let Some(gen) = gen {
-        if gen != "gen" {
+        is_async = gen == "async_gen";
+        if gen != "gen" && gen != "async_gen" {
             return Err(Error::new(
                 gen.span().unwrap().into(),
                 "expected keyword `gen` marking an iterator",
@@ -135,7 +136,7 @@ fn parse_gen_2996(input: ParseStream) -> Result<IteratorItemParse> {
     Ok(IteratorItemParse::Custom {
         attributes,
         visibility,
-        is_async: r#async.is_some(),
+        is_async,
         name,
         generics,
         args,
@@ -290,7 +291,6 @@ impl IteratorItemParse {
             }
             IteratorItemParse::Ordinary { mut function } => {
                 GenMacroExpander.visit_item_fn_mut(&mut function);
-                eprintln!("{}", quote! { #function });
                 function.to_token_stream().into()
             }
         }
@@ -299,7 +299,8 @@ impl IteratorItemParse {
 
 #[proc_macro]
 pub fn iterator_item(input: TokenStream) -> TokenStream {
-    // change gen => gen! so we get a second shot at parsing wherever it appears in an expression
+    // change `gen => gen!` and `async gen => async_gen!` so we get a second
+    // shot at parsing wherever they appear in an expression
     let input = macrofy(input.into());
     // actually parse the macro input
     let item: IteratorItemParse = parse_macro_input!(input as IteratorItemParse);
