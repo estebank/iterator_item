@@ -68,15 +68,14 @@ fn test_early_return() {
     assert_eq!(result.next(), Some(3));
     assert!(result.next().is_none())
 }
-
 struct Foo(Option<i32>);
 
 impl Foo {
     iterator_item! { #
-        /// You can also have "associated iterator items"
-        fn method(&mut self) -> impl Iterator<Item=i32> + '_ {
+        fn method(&mut self) -> impl Iterator<Item=i32> {
+            let num = self.0.take();
             gen {
-                while let Some(n) = self.0.take() {
+                while let Some(n) = num {
                     yield n;
                 }
             }
