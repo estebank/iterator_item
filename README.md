@@ -33,6 +33,14 @@ gen fn foo() -> i32 {
 Because it is a macro, it does not work as well as a native language feature would, and has worse
 error messages, but some effort has been made to make them usable.
 
+## Notes on keywords
+
+Normally, a new keyword requires an edition (to avoid breaking code that uses
+it as an identifier), and until that edition the keyword would need to use
+reserved syntax such as `k#yield`. However, Rust reserved `yield` as a keyword
+back in Rust 0.8, and never unreserved it. So, Rust can safely use that keyword
+without a transition.
+
 ## Design decisions of propane
 
 Because the semantics are heavily leaning on Propane, the following considerations also apply to
