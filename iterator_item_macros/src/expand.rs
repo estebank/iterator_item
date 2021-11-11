@@ -9,14 +9,14 @@ use syn::{
 };
 
 pub struct GenMacro {
-    body: Block,
-    is_async: bool,
-    is_try_yield: bool,
-    attributes: Vec<Attribute>,
+    pub body: Block,
+    pub is_async: bool,
+    pub is_try_yield: bool,
+    pub attributes: Vec<Attribute>,
 }
 
 impl GenMacro {
-    fn build(self) -> Expr {
+    pub fn build(self) -> Expr {
         let GenMacro {
             mut body,
             is_async,
@@ -50,11 +50,14 @@ impl GenMacro {
             // FIXME: we can do some of the above by modifying `Visitor` to keep track of renames
             // and reassigns of the input bindings and of them being iterated on in for loops, but
             // this will be tricky to get right.
-            if attr.path.get_ident().map(|a| a.to_string()).as_deref() == Some("size_hint") {
+            if attr.path.is_ident("size_hint") {
                 size_hint = attr.tokens.clone();
             }
         }
 
+        // The `yield panic!()` in the desugaring is to allow an empty body in the input to still
+        // expand to a generator. `rustc` relies on the presence of a `yield` statement in a
+        // closure body to turn it into a generator.
         let tail = quote! {
             #[allow(unreachable_code)]
             {
