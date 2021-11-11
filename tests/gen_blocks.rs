@@ -1,5 +1,6 @@
 #![feature(generators, generator_trait, let_else, try_trait_v2)]
 use iterator_item::iterator_item;
+use std::cell::Cell;
 
 iterator_item! { #
     /// Basic smoke test
@@ -68,14 +69,13 @@ fn test_early_return() {
     assert_eq!(result.next(), Some(3));
     assert!(result.next().is_none())
 }
-struct Foo(Option<i32>);
+struct Foo(Cell<Option<i32>>);
 
 impl Foo {
     iterator_item! { #
-        fn method(&mut self) -> impl Iterator<Item=i32> {
-            let num = self.0.take();
+        fn method(&self) -> impl Iterator<Item=i32> + '_ {
             gen {
-                while let Some(n) = num {
+                while let Some(n) = self.0.take() {
                     yield n;
                 }
             }
@@ -85,8 +85,30 @@ impl Foo {
 
 #[test]
 fn test_foo_method() {
-    let mut foo = Foo(Some(0));
+    let foo = Foo(Cell::new(Some(0)));
     let mut iter = foo.method();
     assert_eq!(iter.next(), Some(0));
+    foo.0.set(Some(1));
+    assert_eq!(iter.next(), Some(1));
     assert!(iter.next().is_none());
+}
+
+iterator_item! { #
+    fn replace_pairs(buffer: &mut Vec<i32>) {
+        let count = buffer.drain(..).sum();
+        buffer.extend(gen {
+            yield 0;
+            for i in 1..=count {
+                yield -i;
+                yield i;
+            }
+        });
+    }
+}
+
+#[test]
+fn test_replace_pairs() {
+    let mut pairs = vec![1, 1, 1];
+    replace_pairs(&mut pairs);
+    assert_eq!(&pairs, &[0, -1, 1, -2, 2, -3, 3]);
 }
