@@ -1,7 +1,7 @@
 #![feature(generators, generator_trait, let_else, try_trait_v2)]
 use iterator_item::iterator_item;
 
-iterator_item! { !
+iterator_item! {
     /// Basic smoke test
     #[size_hint((10, Some(10)))]
     gen fn foo() -> i32 {
@@ -21,7 +21,7 @@ fn test_foo() {
     assert!(foo.next().is_none());
 }
 
-iterator_item! { !
+iterator_item! {
     /// Show off the way you can write a custom `size_hint` impl.
     #[size_hint({
         let (x, y) = iter.size_hint();
@@ -43,7 +43,7 @@ fn test_bar() {
     assert_eq!(&[42, 1, 2, 3, 42][..], &bar.collect::<Vec<_>>()[..]);
 }
 
-iterator_item! { !
+iterator_item! {
     gen fn result() -> Result<i32, ()> {
         fn bar() -> Result<(), ()> {
             Err(())
@@ -70,7 +70,7 @@ fn test_result() {
     assert!(result.next().is_none())
 }
 
-iterator_item! { !
+iterator_item! {
     gen fn early_return() -> i32 {
         let mut x = Some(3);
         let y = x.take()?;
@@ -91,7 +91,7 @@ fn test_early_return() {
 struct Foo(Option<i32>);
 
 impl Foo {
-    iterator_item! { !
+    iterator_item! {
         /// You can also have "associated iterator items"
         gen fn method(&mut self) -> i32 {
             while let Some(n) = self.0.take() {

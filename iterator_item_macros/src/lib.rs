@@ -25,102 +25,104 @@ struct IteratorItemParse {
     body: Block,
 }
 
-fn check_fn_star(input: ParseStream) -> bool {
-    let lookahead = input.lookahead1();
-    if lookahead.peek(Token![*]) {
-        input.parse::<Token![*]>().unwrap();
-        true
-    } else {
-        false
-    }
-}
-
-fn parse_fn_star(input: ParseStream) -> Result<IteratorItemParse> {
-    // This will parse the following:
-    // `#[attr(..)] #[attr2] pub async fn* foo(<args>) yields Ty { ... }`
+fn parse_fn(input: ParseStream) -> Result<IteratorItemParse> {
+    // `#[attr(..)] #[attr2] pub async`
     let attributes: Vec<Attribute> = input.call(Attribute::parse_outer)?;
     let visibility: Visibility = input.parse()?;
     let r#async: Option<Token![async]> = input.parse()?;
-    input.parse::<Token![fn]>()?;
-    input.parse::<Token![*]>()?;
+
+    // `fn foo(<args>)`
+    // `fn* foo(<args>)`
+    // `gen fn foo(<args>)`
+    // `gen foo(<args>)`
+    // `generator fn foo(<args>)`
+    // `generator foo(<args>)`
+    // `iterator fn foo(<args>)`
+    // `iterator foo(<args>)`
+    // `iter fn foo(<args>)`
+    // `ited foo(<args>)`
+    let lookahead = input.lookahead1();
+    if lookahead.peek(Token![fn]) {
+        input.parse::<Token![fn]>()?;
+        let lookahead = input.lookahead1();
+        if lookahead.peek(Token![*]) {
+            input.parse::<Token![*]>()?;
+        }
+    } else {
+        // Parse expected `gen` keyword. That's not currently a token, so hack it up.
+        let gen: Option<Ident> = input.parse()?;
+        let tokens = &["gen", "generator", "iterator"];
+        if let Some(gen) = gen {
+            if !tokens.contains(&gen.to_string().as_str()) {
+                return Err(Error::new(
+                    gen.span().unwrap().into(),
+                    format!(
+                        "expected one of the following keywords to identify an iterator item: {}",
+                        tokens
+                            .iter()
+                            .map(|t| format!("`{}`", t))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    ),
+                ));
+            }
+        } else {
+            return Err(Error::new(
+                input.span().unwrap().into(),
+                format!(
+                    "expected one of the following keywords to identify an iterator item: {}",
+                    tokens
+                        .iter()
+                        .map(|t| format!("`{}`", t))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+            ));
+        }
+        let lookahead = input.lookahead1();
+        if lookahead.peek(Token![fn]) {
+            input.parse::<Token![fn]>()?;
+        }
+    }
+
     let name: Ident = input.parse()?;
     let generics: Generics = input.parse()?;
     let fn_args;
     parenthesized!(fn_args in input);
     let args = parse_fn_args(&fn_args)?;
-    let yields: Option<Ident> = input.parse()?;
-    let yields: Option<Type> = if let Some(yields) = yields {
-        if yields != "yields" {
-            return Err(Error::new(
-                yields.span().unwrap().into(),
-                "expected contextual keyword `yields` or the start of an iterator body",
-            ));
-            // FIXME: potentially deal better with this and try to recover the parse in a way
-            // that doesn't spam an user that forgot to write yields or tried to write `->`.
-        }
-        Some(input.parse()?)
-    } else {
-        None
-    };
-    let body: Block = input.parse()?;
-    Ok(IteratorItemParse {
-        attributes,
-        visibility,
-        is_async: r#async.is_some(),
-        name,
-        generics,
-        args,
-        yields,
-        body,
-    })
-}
 
-fn check_gen_2996(input: ParseStream) -> bool {
-    let lookahead = input.lookahead1();
-    if lookahead.peek(Token![!]) {
-        input.parse::<Token![!]>().unwrap();
-        true
-    } else {
-        false
-    }
-}
-
-fn parse_gen_2996(input: ParseStream) -> Result<IteratorItemParse> {
-    // This will parse the following:
-    // `#[attr(..)] #[attr2] pub async gen fn foo(<args>) -> Ty { ... }`
-    let attributes: Vec<Attribute> = input.call(Attribute::parse_outer)?;
-    let visibility: Visibility = input.parse()?;
-    let r#async: Option<Token![async]> = input.parse()?;
-
-    // Parse expected `gen` keyword. That's not currently a token, so hack it up.
-    let gen: Option<Ident> = input.parse()?;
-    if let Some(gen) = gen {
-        if gen != "gen" {
-            return Err(Error::new(
-                gen.span().unwrap().into(),
-                "expected keyword `gen` marking an iterator",
-            ));
-        }
-    } else {
-        return Err(Error::new(
-            input.span().unwrap().into(),
-            "expected keyword `gen` marking an iterator",
-        ));
-    }
-    input.parse::<Token![fn]>()?;
-    let name: Ident = input.parse()?;
-    let generics: Generics = input.parse()?;
-    let fn_args;
-    parenthesized!(fn_args in input);
-    let args = parse_fn_args(&fn_args)?;
-    // Parse optional right arrow token `->`, marking the beginning of the return type
+    // `-> Ty`
+    // `=> Ty`
+    // `yield Ty`
+    // `yields Ty`
     let lookahead = input.lookahead1();
     let yields: Option<Type> = if lookahead.peek(Token![->]) {
         input.parse::<Token![->]>()?;
         Some(input.parse()?)
+    } else if lookahead.peek(Token![yield]) {
+        input.parse::<Token![yield]>()?;
+        Some(input.parse()?)
+    } else if lookahead.peek(Token![=>]) {
+        input.parse::<Token![=>]>()?;
+        Some(input.parse()?)
     } else {
-        None
+        let yields: Option<Ident> = input.parse()?;
+        if let Some(yields) = yields {
+            if yields != "yields" {
+                return Err(Error::new(
+                    yields.span().unwrap().into(),
+                    "expected one of `yields`, `yield`, `->`, `=>` to indicate the value being \
+                     yielded by the iterator item",
+                ));
+                // FIXME: potentially deal better with this and try to recover the parse in a way
+                // that doesn't spam an user that forgot to write yields or tried to write `->`.
+            }
+            Some(input.parse()?)
+        } else {
+            None
+        }
     };
+
     let body: Block = input.parse()?;
     Ok(IteratorItemParse {
         attributes,
@@ -137,16 +139,7 @@ fn parse_gen_2996(input: ParseStream) -> Result<IteratorItemParse> {
 impl Parse for IteratorItemParse {
     /// Hi! If you are looking to hack on this crate to come up with your own syntax, **look here**!
     fn parse(input: ParseStream) -> Result<Self> {
-        if check_fn_star(input) {
-            parse_fn_star(input)
-        } else if check_gen_2996(input) {
-            parse_gen_2996(input)
-        } else {
-            Err(Error::new(
-                input.span().unwrap().into(),
-                "expected an iterator item syntax token: `*`, `!`",
-            ))
-        }
+        parse_fn(input)
     }
 }
 

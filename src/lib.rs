@@ -38,7 +38,7 @@
 /// #![feature(generators, generator_trait)]
 /// # use iterator_item::iterator_item;
 ///
-/// iterator_item! { *
+/// iterator_item! {
 ///     fn* fizz_buzz() yields String {
 ///        for x in 1..101 {
 ///           match (x % 3 == 0, x % 5 == 0) {
