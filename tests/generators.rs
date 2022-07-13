@@ -4,7 +4,7 @@ use iterator_item::iterator_item;
 iterator_item! {
     /// Basic smoke test
     #[size_hint((10, Some(10)))]
-    fn* foo() yields i32 {
+    gen foo() -> i32 {
         for n in 0..10 {
             yield n;
         }

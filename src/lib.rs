@@ -73,7 +73,7 @@
 ///
 /// The intention of this crate is for people to fork it and submit alternative syntax for this
 /// feature that they believe would make for a better user experience.
-pub use iterator_item_macros::iterator_item;
+pub use iterator_item_macros::{iterator, iterator_item};
 
 #[doc(hidden)]
 pub mod __internal {

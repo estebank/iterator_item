@@ -16,12 +16,14 @@ mod elision;
 /// approach.
 struct IteratorItemParse {
     attributes: Vec<Attribute>,
+    size_hint: SizeHint,
     visibility: Visibility,
     is_async: bool,
     name: Ident,
     generics: Generics,
     args: Punctuated<FnArg, Token![,]>,
     yields: Option<Type>,
+    return_ty: Option<Type>,
     body: Block,
 }
 
@@ -30,6 +32,8 @@ fn parse_fn(input: ParseStream) -> Result<IteratorItemParse> {
     let attributes: Vec<Attribute> = input.call(Attribute::parse_outer)?;
     let visibility: Visibility = input.parse()?;
     let r#async: Option<Token![async]> = input.parse()?;
+
+    let mut regular_fn = true;
 
     // `fn foo(<args>)`
     // `fn* foo(<args>)`
@@ -46,6 +50,7 @@ fn parse_fn(input: ParseStream) -> Result<IteratorItemParse> {
         input.parse::<Token![fn]>()?;
         let lookahead = input.lookahead1();
         if lookahead.peek(Token![*]) {
+            regular_fn = false;
             input.parse::<Token![*]>()?;
         }
     } else {
@@ -83,6 +88,7 @@ fn parse_fn(input: ParseStream) -> Result<IteratorItemParse> {
         if lookahead.peek(Token![fn]) {
             input.parse::<Token![fn]>()?;
         }
+        regular_fn = false;
     }
 
     let name: Ident = input.parse()?;
@@ -97,6 +103,13 @@ fn parse_fn(input: ParseStream) -> Result<IteratorItemParse> {
     // `yields Ty`
     let lookahead = input.lookahead1();
     let yields: Option<Type> = if lookahead.peek(Token![->]) {
+        if regular_fn {
+            name.span()
+                .unwrap()
+                .error("this looks like regular function, don't wrap it in `iterator_item` macro")
+                .help("use `iterator` attribute instead")
+                .emit();
+        }
         input.parse::<Token![->]>()?;
         Some(input.parse()?)
     } else if lookahead.peek(Token![yield]) {
@@ -126,12 +139,14 @@ fn parse_fn(input: ParseStream) -> Result<IteratorItemParse> {
     let body: Block = input.parse()?;
     Ok(IteratorItemParse {
         attributes,
+        size_hint: SizeHint { expr: None },
         visibility,
         is_async: r#async.is_some(),
         name,
         generics,
         args,
         yields,
+        return_ty: None,
         body,
     })
 }
@@ -147,12 +162,14 @@ impl IteratorItemParse {
     fn build(self) -> TokenStream {
         let IteratorItemParse {
             mut attributes,
+            size_hint,
             visibility,
             is_async,
             name,
             mut generics,
             args,
             yields,
+            return_ty,
             mut body,
         } = self;
         let yields = match yields {
@@ -182,7 +199,10 @@ impl IteratorItemParse {
         };
         let mut visitor = Visitor::new(is_async, is_try_yield);
         visitor.visit_block_mut(&mut body);
-        let mut size_hint = quote!((0, None));
+        let mut final_size_hint = quote!((0, None));
+        if let Some(size_hint) = size_hint.expr {
+            final_size_hint = quote!(#size_hint);
+        }
         attributes.retain(|attr| {
             // An annotation of the type `#[size_hint((0, None))] fn* foo() { ... }` lets the end
             // user provide code to override the default return of `Iterator::size_hint`.
@@ -195,7 +215,7 @@ impl IteratorItemParse {
             // and reassigns of the input bindings and of them being iterated on in for loops, but
             // this will be tricky to get right.
             if attr.path.get_ident().map(|a| a.to_string()).as_deref() == Some("size_hint") {
-                size_hint = attr.tokens.clone();
+                final_size_hint = attr.tokens.clone();
                 // We are removing the attribute from the desugaring because we are parsing it
                 // directly.
                 false
@@ -214,7 +234,9 @@ impl IteratorItemParse {
                 yield panic!();
             }
         };
-        let return_type = if is_async {
+        let return_type = if let Some(ty) = return_ty {
+            quote!(#ty)
+        } else if is_async {
             // Whey don't we use `std`'s `Stream` here?
             // `Stream` is currently on the process of being reworked into `AsyncIterator`[1],
             // leveraging associated `async fn` support that isn't yet in nightly. For now, we
@@ -240,7 +262,7 @@ impl IteratorItemParse {
         let expanded = quote! {
             #(#attributes)* #visibility fn #name #generics(#(#args),*) -> #return_type {
                 #[allow(unused_parens)]
-                let size_hint = #size_hint;
+                let size_hint = #final_size_hint;
                 let gen = #head {
                     #body
                     #tail
@@ -257,6 +279,95 @@ impl IteratorItemParse {
 pub fn iterator_item(input: TokenStream) -> TokenStream {
     let item: IteratorItemParse = parse_macro_input!(input as IteratorItemParse);
     item.build()
+}
+
+struct SizeHint {
+    expr: Option<Expr>,
+}
+
+impl Parse for SizeHint {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let size_hint: Option<Ident> = input.parse()?;
+        if let Some(size_hint) = size_hint {
+            if size_hint != "size_hint" {
+                return Err(Error::new(
+                    size_hint.span(),
+                    "expected `size_hint` annotation 1",
+                ));
+            }
+            let _ = input.parse::<Token![=]>()?;
+            return Ok(Self {
+                expr: Some(input.parse::<Expr>()?),
+            });
+        }
+        Ok(Self { expr: None })
+    }
+}
+
+#[proc_macro_attribute]
+pub fn iterator(attr: TokenStream, input: TokenStream) -> TokenStream {
+    let item = parse_macro_input!(input as Item);
+    let item = match item {
+        Item::Fn(item) => item,
+        _ => panic!("other"),
+    };
+    //let size_hint: Result<Expr> = syn::parse(attr);
+    //let size_hint = size_hint.unwrap();
+    let size_hint = parse_macro_input!(attr as SizeHint);
+    //if let Some(expr) = size_hint.expr {
+    //    println!("{:#?}", quote!(#expr));
+    //}
+    //println!("{:#?}", size_hint);
+
+    let return_ty = match item.sig.output {
+        ReturnType::Default => panic!("expected `impl Iterator<Output = Ty>` return type"),
+        ReturnType::Type(_, ty) => {
+            match *ty {
+                Type::ImplTrait(TypeImplTrait { .. }) => {
+                    // FIXME: we want to evaluate the returned `impl Trait` to verify it is a valid
+                    // iterator that can be used with `yield`. This would also help with better
+                    // typechk diagnostics and appropriate handling of anon lifetimes.
+                    //
+                    // for bound in bounds {
+                    //     match bound {
+                    //         TypeParamBound::Trait(bound) => {
+                    //             for segment in bound.path.segments {
+                    //                 if let PathArguments::AngleBracketed(args) = segment.arguments {
+                    //                     for arg in args.args {
+                    //                         if let GenericArgument::Constraint(constraint) = arg {
+                    //                             if constraint.ident == "Item" {
+                    //                                 for bound in contraint.bounds {
+                    //                                     break (ty, bound);
+                    //                                 }
+                    //                             }
+                    //                         }
+                    //                     }
+                    //                 }
+                    //             }
+                    //         }
+                    //         _ => continue,
+                    //     }
+                    // }
+                    // panic!("`Item` not found");
+                    ty
+                }
+                _ => panic!("expected `impl Iterator<Output = Ty>` return type"),
+            }
+        }
+    };
+    IteratorItemParse {
+        attributes: item.attrs,
+        size_hint,
+        visibility: item.vis,
+        is_async: item.sig.asyncness.is_some(),
+        name: item.sig.ident,
+        generics: item.sig.generics,
+        args: item.sig.inputs,
+        yields: None,
+        return_ty: Some(*return_ty),
+        body: *item.block,
+    }
+    .build()
 }
 
 /// This `Visitor` allows us to modify the body (block) of the parsed item to make changes to it
